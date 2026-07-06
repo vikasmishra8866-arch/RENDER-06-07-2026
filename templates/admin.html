@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <title>एडमिन पैनल - पॉइंट्स रिमोट</title>
+    <style>
+        body { background: #0d1117; color: white; padding: 40px; font-family: sans-serif; }
+        .panel { max-width: 600px; margin: 0 auto; background: #161b22; padding: 30px; border-radius: 12px; border: 1px solid #30363d; }
+        h2 { color: #00f2fe; margin-bottom: 20px; }
+        form { display: flex; gap: 10px; margin-bottom: 30px; }
+        input, select, button { padding: 10px; background: #21262d; border: 1px solid #30363d; color: white; border-radius: 6px; }
+        button { background: #238636; cursor: pointer; font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 12px; border: 1px solid #30363d; text-align: left; }
+        th { background: #21262d; }
+    </style>
+</head>
+<body>
+    <div class="panel">
+        <h2>🪙 एडमिन पॉइंट कंट्रोलर Panel</h2>
+        <form method="POST">
+            <input type="text" name="username" placeholder="यूज़रनेम डालें" required>
+            <select name="action">
+                <option value="add">पॉइंट्स जोड़ें (+)</option>
+                <option value="set">पॉइंट फिक्स करें (=)</option>
+            </select>
+            <input type="number" name="amount" placeholder="संख्या" required>
+            <button type="submit">अपडेट करें</button>
+        </form>
+
+        <h3>सभी यूज़र्स की लिस्ट</h3>
+        <table>
+            <tr><th>ID</th><th>यूज़रनेम</th><th>पॉइंट्स बैलेंस</th><th>रोल</th></tr>
+            {% for user in users %}
+            <tr>
+                <td>{{ user[0] }}</td>
+                <td>{{ user[1] }}</td>
+                <td style="color: #58a6ff; font-weight: bold;">{{ user[2] }}</td>
+                <td>{{ user[3] }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        <br>
+        <a href="/dashboard" style="color: #8b949e; text-decoration: none;">← वापस डैशबोर्ड पर जाएँ</a>
+    </div>
+</body>
+</html>
