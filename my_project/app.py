@@ -16,7 +16,7 @@ API_ID = int(os.getenv("TG_API_ID", "30587359"))
 API_HASH = os.getenv("TG_API_HASH", "841b57b9782c258672af34c5f7146f56")
 BOT_USERNAME = os.getenv("TARGET_BOT_USERNAME", "@rtovehicleinfoobot")
 
-# SQLite Database Helper (पॉइंट्स स्टोर करने के लिए)
+# SQLite Database Helper
 import sqlite3
 DB_FILE = "database.db"
 
@@ -33,7 +33,6 @@ def init_db():
         )
     ''')
     try:
-        # डिफ़ॉल्ट एडमिन और टेस्ट यूजर बनाना
         cursor.execute("INSERT INTO users (username, password, points, role) VALUES ('admin', 'admin123', 9999, 'admin')")
         cursor.execute("INSERT INTO users (username, password, points, role) VALUES ('user1', 'user123', 10, 'user')")
         conn.commit()
@@ -43,19 +42,28 @@ def init_db():
 
 init_db()
 
-# Telethon Client को बैकग्राउंड थ्रेड में चालू रखना
+# --- EVENT LOOP FIX FOR GUNICORN ---
+# गनीकॉर्न के लिए थ्रेड और एसिंक लूप को सही से मैनेज करने का लॉजिक
 loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
 
 def start_telethon_loop(loop_env):
     asyncio.set_event_loop(loop_env)
     loop_env.run_forever()
 
+# बैकग्राउंड थ्रेड शुरू करना
 threading.Thread(target=start_telethon_loop, args=(loop,), daemon=True).start()
 
+# क्लाइंट को सही लूप असाइन करना
 client = TelegramClient('parivahan_session', API_ID, API_HASH, loop=loop)
-asyncio.run_coroutine_threadsafe(client.start(), loop)
 
-# नए बॉट के टेक्स्ट के हिसाब से एडवांस्ड Regex पार्सर
+# लूप के सुरक्षित चलने पर ही क्लाइंट को स्टार्ट करना
+def connect_client():
+    asyncio.run_coroutine_threadsafe(client.start(), loop)
+
+connect_client()
+
+# बॉट डेटा पार्सर
 def parse_bot_message(text):
     data = {
         "reg_no": re.search(r"Registration Number:\s*([\w\-]+)", text, re.IGNORECASE),
@@ -82,7 +90,6 @@ def parse_bot_message(text):
     return clean_data
 
 # --- FLASK ROUTES ---
-
 @app.route('/')
 def index():
     if 'username' in session:
@@ -106,7 +113,6 @@ def login():
             session['role'] = user[1]
             return redirect(url_for('dashboard'))
         return render_template('login.html', error="गलत यूज़रनेम या पासवर्ड!")
-        
     return render_template('login.html')
 
 @app.route('/dashboard')
@@ -119,7 +125,6 @@ def dashboard():
     cursor.execute("SELECT points FROM users WHERE username=?", (session['username'],))
     points = cursor.fetchone()[0]
     conn.close()
-    
     return render_template('dashboard.html', username=session['username'], points=points, role=session['role'])
 
 @app.route('/admin', methods=['GET', 'POST'])
@@ -151,14 +156,12 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
-# --- मुख्य सर्च API ---
 async def fetch_from_telegram(gadi_number):
     await client.send_message(BOT_USERNAME, gadi_number)
     fut = loop.create_future()
     
     @client.on(events.NewMessage(from_users=BOT_USERNAME))
     async def handler(event):
-        # गाड़ी का नंबर या VEHICLE DETAILS टेक्स्ट मिलते ही ट्रिगर होगा
         if gadi_number in event.raw_text or "VEHICLE" in event.raw_text:
             client.remove_event_handler(handler)
             if not fut.done():
@@ -189,13 +192,12 @@ def search_vehicle():
     
     if current_points <= 0:
         conn.close()
-        return jsonify({"error": "आपके पास पर्याप्त पॉइंट्स नहीं हैं! कृपया एडमिन से संपर्क करें।"}), 403
+        return jsonify({"error": "आपके पास पर्याप्त पॉइंट्स नहीं हैं!"}), 403
         
     future = asyncio.run_coroutine_threadsafe(fetch_from_telegram(gadi_number), loop)
     result = future.result()
     
     if "error" not in result:
-        # सफल सर्च पर ही 1 पॉइंट कटेगा
         cursor.execute("UPDATE users SET points = points - 1 WHERE username=?", (username,))
         conn.commit()
         
