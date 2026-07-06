@@ -5,73 +5,134 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>डैशबोर्ड - Parivahan Service</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { background: #0d1117; color: #c9d1d9; padding: 30px; }
+        
+        /* प्रीमियम नेविगेशन बार */
         .navbar { display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 1px solid #30363d; margin-bottom: 40px; }
-        .logo { font-size: 24px; font-weight: bold; color: #00f2fe; text-transform: uppercase; }
+        .logo { font-size: 24px; font-weight: bold; color: #00f2fe; text-transform: uppercase; letter-spacing: 1px; }
         .nav-right { display: flex; align-items: center; gap: 20px; }
-        .points-badge { background: rgba(0, 242, 254, 0.1); border: 1px solid #00f2fe; color: #00f2fe; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 14px; }
+        .points-badge { background: rgba(0, 242, 254, 0.1); border: 1px solid #00f2fe; color: #00f2fe; padding: 10px 20px; border-radius: 20px; font-weight: bold; font-size: 14px; box-shadow: 0 0 10px rgba(0, 242, 254, 0.2); }
+        .btn-admin { color: #58a6ff; text-decoration: none; font-weight: bold; font-size: 14px; border: 1px solid #30363d; padding: 8px 16px; border-radius: 8px; background: #161b22; transition: 0.3s; }
+        .btn-admin:hover { border-color: #58a6ff; background: rgba(88, 166, 255, 0.1); }
         .btn-logout { color: #ff7b72; text-decoration: none; font-weight: bold; font-size: 14px; }
-        .search-container { max-width: 600px; margin: 0 auto 50px auto; text-align: center; }
-        .search-box { display: flex; gap: 10px; margin-top: 20px; }
-        .search-box input { flex: 1; padding: 16px; background: #161b22; border: 1px solid #30363d; border-radius: 10px; color: white; font-size: 18px; text-transform: uppercase; letter-spacing: 1px; }
-        .search-box input:focus { border-color: #00f2fe; outline: none; }
-        .btn-search { padding: 0 30px; background: linear-gradient(45deg, #0072ff, #00f2fe); border: none; border-radius: 10px; color: white; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s; }
-        .btn-search:hover { box-shadow: 0 0 15px rgba(0, 242, 254, 0.4); }
+
+        /* सर्च बॉक्स सेक्शन */
+        .search-container { max-width: 650px; margin: 0 auto 40px auto; text-align: center; }
+        .search-container h2 { font-size: 28px; color: white; margin-bottom: 10px; font-weight: 600; }
+        .search-container p { color: #8b949e; font-size: 14px; margin-bottom: 25px; }
+        .search-box { display: flex; gap: 12px; }
+        .search-box input { flex: 1; padding: 18px; background: #161b22; border: 1px solid #30363d; border-radius: 12px; color: white; font-size: 18px; text-transform: uppercase; letter-spacing: 2px; font-weight: bold; transition: 0.3s; }
+        .search-box input:focus { border-color: #00f2fe; outline: none; box-shadow: 0 0 15px rgba(0, 242, 254, 0.25); }
+        .btn-search { padding: 0 35px; background: linear-gradient(45deg, #0072ff, #00f2fe); border: none; border-radius: 12px; color: white; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s; text-transform: uppercase; letter-spacing: 1px; }
+        .btn-search:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(0, 242, 254, 0.4); }
         
-        /* रिजल्ट्स कार्ड डिज़ाइन */
-        .result-card { max-width: 800px; margin: 0 auto; background: #161b22; border-radius: 16px; border: 1px solid #30363d; padding: 30px; display: none; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
-        .result-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #30363d; padding-bottom: 15px; margin-bottom: 25px; }
-        .v-num { font-size: 24px; font-weight: bold; color: #58a6ff; letter-spacing: 1px; }
-        .badge-active { background: rgba(56, 139, 253, 0.15); color: #58a6ff; padding: 6px 12px; border-radius: 6px; font-weight: bold; font-size: 14px; }
+        /* लोडर एनीमेशन */
+        .loader { display: none; margin-top: 30px; font-size: 16px; color: #00f2fe; font-weight: bold; }
+        .spinner { border: 4px solid rgba(0, 242, 254, 0.1); width: 36px; height: 36px; border-radius: 50%; border-left-color: #00f2fe; animation: spin 1s linear infinite; margin: 10px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* सुपर प्रीमियम आरसी रिजल्ट्स कार्ड */
+        .result-card { max-width: 850px; margin: 0 auto 50px auto; background: #161b22; border-radius: 20px; border: 1px solid #30363d; padding: 35px; display: none; box-shadow: 0 15px 50px rgba(0,0,0,0.6); }
+        .result-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #30363d; padding-bottom: 20px; margin-bottom: 30px; }
+        .v-num-box { display: flex; align-items: center; gap: 12px; }
+        .v-icon { font-size: 30px; }
+        .v-num { font-size: 28px; font-weight: bold; color: #58a6ff; letter-spacing: 1.5px; }
+        .badge-status { background: #238636; color: white; padding: 8px 16px; border-radius: 30px; font-weight: bold; font-size: 14px; text-transform: uppercase; box-shadow: 0 0 10px rgba(35, 134, 54, 0.3); }
         
-        .grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .info-box { background: #0d1117; padding: 15px; border-radius: 8px; border: 1px solid #21262d; }
-        .label { font-size: 11px; text-transform: uppercase; color: #8b949e; margin-bottom: 5px; font-weight: bold; }
+        /* ग्रिड और सेशन्स लेआउट */
+        .section-title { font-size: 14px; color: #00f2fe; text-transform: uppercase; letter-spacing: 1px; margin: 25px 0 12px 0; font-weight: bold; display: flex; align-items: center; gap: 8px; border-bottom: 1px id #21262d; padding-bottom: 5px; }
+        .grid-container { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+        @media(max-width: 600px) { .grid-container { grid-template-columns: 1fr; } }
+        
+        .info-box { background: #0d1117; padding: 16px; border-radius: 10px; border: 1px solid #21262d; transition: 0.2s; }
+        .info-box:hover { border-color: #30363d; background: #12161f; }
+        .label { font-size: 11px; text-transform: uppercase; color: #8b949e; margin-bottom: 6px; font-weight: 600; letter-spacing: 0.5px; }
         .value { font-size: 16px; color: white; font-weight: 500; }
-        .loader { display: none; color: #00f2fe; margin-top: 20px; font-weight: bold; }
+        
+        /* अलर्ट कलर (ब्लैकलिस्ट के लिए) */
+        .alert-safe { color: #56d364 !important; font-weight: bold; }
+        .alert-danger { color: #f85149 !important; font-weight: bold; }
     </style>
 </head>
 <body>
+
+    <!-- टॉप नेविगेशन बार -->
     <div class="navbar">
-        <div class="logo">🚗 Parivahan Service Desk</div>
+        <div class="logo">⚡ Parivahan Desk</div>
         <div class="nav-right">
-            {% if role == 'admin' %}<a href="/admin" style="color: #58a6ff; text-decoration: none; font-weight: bold;">Admin Panel</a>{% endif %}
-            <div class="points-badge">पॉइंट्स बैलेंस: <span id="user-points">{{ points }}</span></div>
+            {% if role == 'admin' %}
+                <a href="/admin" class="btn-admin">⚙️ Admin Panel</a>
+            {% endif %}
+            <div class="points-badge">🪙 पॉइंट्स: <span id="user-points">{{ points }}</span></div>
             <a href="/logout" class="btn-logout">लॉगआउट</a>
         </div>
     </div>
 
+    <!-- सर्च बार कंटेनर -->
     <div class="search-container">
-        <h2>वाहन विवरण सर्च करें</h2>
+        <h2>वाहन आरसी विवरण खोजें</h2>
+        <p>सिर्फ गाड़ी नंबर दर्ज करें और पूरी डिजिटल आरसी शीट लाइव प्राप्त करें</p>
         <div class="search-box">
-            <input type="text" id="v-input" placeholder="उदा. GJ06RE3357">
+            <input type="text" id="v-input" placeholder="उदा. GJ15K9812" autocomplete="off">
             <button class="btn-search" onclick="performSearch()">SEARCH</button>
         </div>
-        <div class="loader" id="loader">गिटहब और टेलीग्राम सर्वर से डेटा फेच हो रहा है, कृपया प्रतीक्षा करें...</div>
+        
+        <!-- लोडर -->
+        <div class="loader" id="loader">
+            <div class="spinner"></div>
+            टेलीग्राम सर्वर से डेटा सुरक्षित रूप से निकाला जा रहा है, कृपया प्रतीक्षा करें...
+        </div>
     </div>
 
+    <!-- लाइव आरसी डैशबोर्ड कार्ड -->
     <div class="result-card" id="result-card">
         <div class="result-header">
-            <div class="v-num" id="res-reg-no">GJ06RE3357</div>
-            <div class="badge-active" id="res-status">ACTIVE</div>
+            <div class="v-num-box">
+                <span class="v-icon">🚗</span>
+                <div class="v-num" id="res-reg-no">GJ15K9812</div>
+            </div>
+            <div class="badge-status" id="res-status">ACTIVE</div>
         </div>
+
+        <!-- सेक्शन 1: ओनर और आरटीओ की जानकारी -->
+        <div class="section-title">👤 OWNER & REGISTRATION INFO</div>
         <div class="grid-container">
-            <div class="info-box"><div class="label">मालिक का नाम</div><div class="value" id="res-owner">N/A</div></div>
-            <div class="info-box"><div class="label">पिता का नाम</div><div class="value" id="res-father">N/A</div></div>
-            <div class="info-box"><div class="label">मोबाइल नंबर</div><div class="value" id="res-mobile">N/A</div></div>
-            <div class="info-box"><div class="label">वाहन मॉडल</div><div class="value" id="res-model">N/A</div></div>
-            <div class="info-box"><div class="label">ईंधन का प्रकार</div><div class="value" id="res-fuel">N/A</div></div>
-            <div class="info-box"><div class="label">चेसिस नंबर</div><div class="value" id="res-chassis">N/A</div></div>
-            <div class="info-box"><div class="label">इंजन नंबर</div><div class="value" id="res-engine">N/A</div></div>
+            <div class="info-box"><div class="label">मालिक का नाम (Owner Name)</div><div class="value" id="res-owner">NA</div></div>
+            <div class="info-box"><div class="label">पिता का नाम (Father's Name)</div><div class="value" id="res-father">NA</div></div>
+            <div class="info-box"><div class="label">पंजीकरण आरटीओ (RTO Location)</div><div class="value" id="res-rto">NA</div></div>
+            <div class="info-box"><div class="label">पंजीकरण तारीख (Registration Date)</div><div class="value" id="res-reg-date">NA</div></div>
+            <div class="info-box"><div class="label">वर्तमान पता (Present Address)</div><div class="value" id="res-address">NA</div></div>
+            <div class="info-box"><div class="label">मोबाइल नंबर (Mobile)</div><div class="value" id="res-mobile">NA</div></div>
+        </div>
+
+        <!-- सेक्शन 2: गाड़ी की स्पेसिफिकेशन्स -->
+        <div class="section-title">🚘 VEHICLE SPECIFICATIONS</div>
+        <div class="grid-container">
+            <div class="info-box"><div class="label">गाड़ी का मॉडल (Vehicle Model)</div><div class="value" id="res-model">NA</div></div>
+            <div class="info-box"><div class="label">ईंधन का प्रकार (Fuel Type)</div><div class="value" id="res-fuel">NA</div></div>
+            <div class="info-box"><div class="label">गाड़ी का रंग (Color)</div><div class="value" id="res-color">NA</div></div>
+            <div class="info-box"><div class="label">चेसिस नंबर (Chassis Number)</div><div class="value" id="res-chassis">NA</div></div>
+            <div class="info-box"><div class="label">इंजन नंबर (Engine Number)</div><div class="value" id="res-engine">NA</div></div>
+        </div>
+
+        <!-- सेक्शन 3: इंश्योरेंस और कंप्लायंस -->
+        <div class="section-title">🛡️ INSURANCE & COMPLIANCE STATUS</div>
+        <div class="grid-container">
+            <div class="info-box"><div class="label">बीमा कंपनी (Insurance Company)</div><div class="value" id="res-ins-comp">NA</div></div>
+            <div class="info-box"><div class="label">बीमा पॉलिसी नंबर (Policy Number)</div><div class="value" id="res-ins-policy">NA</div></div>
+            <div class="info-box"><div class="label">ब्लैकलिस्ट स्टेटस (Blacklist Status)</div><div class="value alert-safe" id="res-blacklist">NA</div></div>
         </div>
     </div>
 
+    <!-- जावास्क्रिप्ट सर्च हैंडलर -->
     <script>
         function performSearch() {
-            const vNum = document.getElementById('v-input').value.trim();
+            const vInput = document.getElementById('v-input');
+            const vNum = vInput.value.trim().toUpperCase();
             if(!vNum) { alert("कृपया गाड़ी नंबर दर्ज करें!"); return; }
             
+            // UI रीसेट और लोडर चालू
             document.getElementById('loader').style.display = 'block';
             document.getElementById('result-card').style.display = 'none';
             
@@ -83,28 +144,65 @@
             .then(res => res.json())
             .then(data => {
                 document.getElementById('loader').style.display = 'none';
+                
                 if(data.error) {
                     alert(data.error);
                 } else {
+                    // पॉइंट्स लाइव अपडेट करना
                     document.getElementById('user-points').innerText = data.updated_points;
+                    
+                    // वैल्यूज को सही बॉक्सेस में मैप करना
                     document.getElementById('res-reg-no').innerText = data.reg_no;
                     document.getElementById('res-status').innerText = data.status;
                     document.getElementById('res-owner').innerText = data.owner_name;
                     document.getElementById('res-father').innerText = data.father_name;
+                    document.getElementById('res-rto').innerText = data.rto;
+                    document.getElementById('res-reg-date').innerText = data.reg_date;
+                    document.getElementById('res-address').innerText = data.present_address;
                     document.getElementById('res-mobile').innerText = data.mobile;
+                    
                     document.getElementById('res-model').innerText = data.model;
                     document.getElementById('res-fuel').innerText = data.fuel;
+                    document.getElementById('res-color').innerText = data.color;
                     document.getElementById('res-chassis').innerText = data.chassis;
                     document.getElementById('res-engine').innerText = data.engine;
                     
+                    document.getElementById('res-ins-comp').innerText = data.insurance_comp;
+                    document.getElementById('res-ins-policy').innerText = data.insurance_policy;
+                    
+                    // ब्लैकलिस्ट के लिए डेंजर या सेफ कलर कोडिंग
+                    const blBox = document.getElementById('res-blacklist');
+                    blBox.innerText = data.blacklist;
+                    if(data.blacklist.toLowerCase().includes('not') || data.blacklist === 'NA') {
+                        blBox.className = "value alert-safe";
+                    } else {
+                        blBox.className = "value alert-danger";
+                    }
+
+                    // स्टेटस बैज का रंग एक्टिव के हिसाब से सेट करना
+                    const stBadge = document.getElementById('res-status');
+                    if(data.status.toLowerCase().includes('act')) {
+                        stBadge.style.background = "#238636";
+                    } else {
+                        stBadge.style.background = "#f85149";
+                    }
+                    
+                    // रिजल्ट कार्ड दिखाना
                     document.getElementById('result-card').style.display = 'block';
                 }
             })
             .catch(err => {
                 document.getElementById('loader').style.display = 'none';
-                alert("सर्वर एरर! कृपया दोबारा प्रयास करें।");
+                alert("सर्वर से कनेक्ट करने में समस्या हुई। कृपया दोबारा प्रयास करें।");
             });
         }
+
+        // Enter की (Key) दबाने पर सर्च चालू करने का शॉर्टकट
+        document.getElementById('v-input').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                performSearch();
+            }
+        });
     </script>
 </body>
 </html>
