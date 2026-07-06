@@ -9,9 +9,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# रेंडर पाथ फिक्स
+# --- डामर-तोड़ पाथ फिक्स (Case-Insensitive Folder Finder) ---
 base_dir = os.path.dirname(os.path.abspath(__file__))
+
+# यह कोड आपके फोल्डर का नाम 'templates' हो या 'Templates', दोनों को ढूंढ लेगा
 template_dir = os.path.join(base_dir, 'templates')
+if not os.path.exists(template_dir):
+    template_dir = os.path.join(base_dir, 'Templates') # कैपिटल T के लिए चेक
 
 app = Flask(__name__, template_folder=template_dir)
 app.secret_key = os.getenv("FLASK_SECRET", "ParivahanServiceUltraPremiumKey2026")
@@ -21,8 +25,7 @@ API_ID = int(os.getenv("TG_API_ID", "30587359"))
 API_HASH = os.getenv("TG_API_HASH", "841b57b9782c258672af34c5f7146f56")
 BOT_USERNAME = os.getenv("TARGET_BOT_USERNAME", "@rtovehicleinfoobot")
 
-# --- MEMORY DATABASE FIX ---
-# फाइल सिस्टम का झंझट ही खत्म, डेटाबेस सीधे रैम में चलेगा ताकि लॉक एरर न आए
+# Database in Memory (कोई फाइल लॉक का झंझट ही नहीं)
 DB_FILE = ":memory:"
 
 def init_db():
@@ -45,19 +48,25 @@ def init_db():
         pass
     return conn
 
-# ग्लोबल कनेक्शन जो कभी बंद नहीं होगा
 db_conn = init_db()
 
-# --- EVENT LOOP FIX ---
+# Event Loop for Telegram
 loop = asyncio.new_event_loop()
 def start_loop(loop_env):
     asyncio.set_event_loop(loop_env)
     loop_env.run_forever()
 
 threading.Thread(target=start_loop, args=(loop,), daemon=True).start()
-
-# टेलीग्राम क्लाइंट बिना किसी फाइल सेशन के (Memory Session)
 client = TelegramClient(None, API_ID, API_HASH, loop=loop)
+
+# --- कस्टम रेंडर फ़ंक्शन (ताकि लॉगिन पेज का नाम कैपिटल होने पर भी खुल जाए) ---
+def safe_render(template_name, **kwargs):
+    try:
+        return render_template(template_name, **kwargs)
+    except Exception:
+        # अगर login.html नहीं मिला, तो Login.html (कैपिटल) ट्राई करेगा
+        capital_template = template_name.capitalize()
+        return render_template(capital_template, **kwargs)
 
 # --- ROUTES ---
 @app.route('/')
@@ -80,8 +89,8 @@ def login():
             session['username'] = user[0]
             session['role'] = user[1]
             return redirect(url_for('dashboard'))
-        return render_template('login.html', error="गलत यूज़रनेम या पासवर्ड!")
-    return render_template('login.html')
+        return safe_render('login.html', error="गलत यूज़रनेम या पासवर्ड!")
+    return safe_render('login.html')
 
 @app.route('/dashboard')
 def dashboard():
@@ -91,7 +100,7 @@ def dashboard():
     cursor = db_conn.cursor()
     cursor.execute("SELECT points FROM users WHERE username=?", (session['username'],))
     points = cursor.fetchone()[0]
-    return render_template('dashboard.html', username=session['username'], points=points, role=session['role'])
+    return safe_render('dashboard.html', username=session['username'], points=points, role=session['role'])
 
 @app.route('/admin', methods=['GET', 'POST'])
 def admin_panel():
@@ -111,7 +120,7 @@ def admin_panel():
         
     cursor.execute("SELECT id, username, points, role FROM users")
     all_users = cursor.fetchall()
-    return render_template('admin.html', users=all_users)
+    return safe_render('admin.html', users=all_users)
 
 @app.route('/logout')
 def logout():
