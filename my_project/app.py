@@ -8,9 +8,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-app = Flask(__name__, template_folder='templates', static_folder='static')
-app.secret_key = os.getenv("FLASK_SECRET", "ParivahanServiceUltraPremiumKey2026")
+# --- TEMPLATE PATH FIX FOR RENDER ---
+# यह कोड आपके फोल्डर के रास्ते को एकदम सही तरीके से फ्लैस्क को समझा देगा
+base_dir = os.path.dirname(os.path.abspath(__file__))
+template_dir = os.path.join(base_dir, 'templates')
 
+app = Flask(__name__, template_folder=template_dir)
+app.secret_key = os.getenv("FLASK_SECRET", "ParivahanServiceUltraPremiumKey2026")
 # Telegram Credentials
 API_ID = int(os.getenv("TG_API_ID", "30587359"))
 API_HASH = os.getenv("TG_API_HASH", "841b57b9782c258672af34c5f7146f56")
