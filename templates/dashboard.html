@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>डैशबोर्ड - Parivahan Service</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 30px; }
+        .navbar { display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 1px solid #30363d; margin-bottom: 40px; }
+        .logo { font-size: 24px; font-weight: bold; color: #00f2fe; text-transform: uppercase; }
+        .nav-right { display: flex; align-items: center; gap: 20px; }
+        .points-badge { background: rgba(0, 242, 254, 0.1); border: 1px solid #00f2fe; color: #00f2fe; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 14px; }
+        .btn-logout { color: #ff7b72; text-decoration: none; font-weight: bold; font-size: 14px; }
+        .search-container { max-width: 600px; margin: 0 auto 50px auto; text-align: center; }
+        .search-box { display: flex; gap: 10px; margin-top: 20px; }
+        .search-box input { flex: 1; padding: 16px; background: #161b22; border: 1px solid #30363d; border-radius: 10px; color: white; font-size: 18px; text-transform: uppercase; letter-spacing: 1px; }
+        .search-box input:focus { border-color: #00f2fe; outline: none; }
+        .btn-search { padding: 0 30px; background: linear-gradient(45deg, #0072ff, #00f2fe); border: none; border-radius: 10px; color: white; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        .btn-search:hover { box-shadow: 0 0 15px rgba(0, 242, 254, 0.4); }
+        
+        /* रिजल्ट्स कार्ड डिज़ाइन */
+        .result-card { max-width: 800px; margin: 0 auto; background: #161b22; border-radius: 16px; border: 1px solid #30363d; padding: 30px; display: none; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
+        .result-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #30363d; padding-bottom: 15px; margin-bottom: 25px; }
+        .v-num { font-size: 24px; font-weight: bold; color: #58a6ff; letter-spacing: 1px; }
+        .badge-active { background: rgba(56, 139, 253, 0.15); color: #58a6ff; padding: 6px 12px; border-radius: 6px; font-weight: bold; font-size: 14px; }
+        
+        .grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .info-box { background: #0d1117; padding: 15px; border-radius: 8px; border: 1px solid #21262d; }
+        .label { font-size: 11px; text-transform: uppercase; color: #8b949e; margin-bottom: 5px; font-weight: bold; }
+        .value { font-size: 16px; color: white; font-weight: 500; }
+        .loader { display: none; color: #00f2fe; margin-top: 20px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="navbar">
+        <div class="logo">🚗 Parivahan Service Desk</div>
+        <div class="nav-right">
+            {% if role == 'admin' %}<a href="/admin" style="color: #58a6ff; text-decoration: none; font-weight: bold;">Admin Panel</a>{% endif %}
+            <div class="points-badge">पॉइंट्स बैलेंस: <span id="user-points">{{ points }}</span></div>
+            <a href="/logout" class="btn-logout">लॉगआउट</a>
+        </div>
+    </div>
+
+    <div class="search-container">
+        <h2>वाहन विवरण सर्च करें</h2>
+        <div class="search-box">
+            <input type="text" id="v-input" placeholder="उदा. GJ06RE3357">
+            <button class="btn-search" onclick="performSearch()">SEARCH</button>
+        </div>
+        <div class="loader" id="loader">गिटहब और टेलीग्राम सर्वर से डेटा फेच हो रहा है, कृपया प्रतीक्षा करें...</div>
+    </div>
+
+    <div class="result-card" id="result-card">
+        <div class="result-header">
+            <div class="v-num" id="res-reg-no">GJ06RE3357</div>
+            <div class="badge-active" id="res-status">ACTIVE</div>
+        </div>
+        <div class="grid-container">
+            <div class="info-box"><div class="label">मालिक का नाम</div><div class="value" id="res-owner">N/A</div></div>
+            <div class="info-box"><div class="label">पिता का नाम</div><div class="value" id="res-father">N/A</div></div>
+            <div class="info-box"><div class="label">मोबाइल नंबर</div><div class="value" id="res-mobile">N/A</div></div>
+            <div class="info-box"><div class="label">वाहन मॉडल</div><div class="value" id="res-model">N/A</div></div>
+            <div class="info-box"><div class="label">ईंधन का प्रकार</div><div class="value" id="res-fuel">N/A</div></div>
+            <div class="info-box"><div class="label">चेसिस नंबर</div><div class="value" id="res-chassis">N/A</div></div>
+            <div class="info-box"><div class="label">इंजन नंबर</div><div class="value" id="res-engine">N/A</div></div>
+        </div>
+    </div>
+
+    <script>
+        function performSearch() {
+            const vNum = document.getElementById('v-input').value.trim();
+            if(!vNum) { alert("कृपया गाड़ी नंबर दर्ज करें!"); return; }
+            
+            document.getElementById('loader').style.display = 'block';
+            document.getElementById('result-card').style.display = 'none';
+            
+            fetch('/api/search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ vehicle_number: vNum })
+            })
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('loader').style.display = 'none';
+                if(data.error) {
+                    alert(data.error);
+                } else {
+                    document.getElementById('user-points').innerText = data.updated_points;
+                    document.getElementById('res-reg-no').innerText = data.reg_no;
+                    document.getElementById('res-status').innerText = data.status;
+                    document.getElementById('res-owner').innerText = data.owner_name;
+                    document.getElementById('res-father').innerText = data.father_name;
+                    document.getElementById('res-mobile').innerText = data.mobile;
+                    document.getElementById('res-model').innerText = data.model;
+                    document.getElementById('res-fuel').innerText = data.fuel;
+                    document.getElementById('res-chassis').innerText = data.chassis;
+                    document.getElementById('res-engine').innerText = data.engine;
+                    
+                    document.getElementById('result-card').style.display = 'block';
+                }
+            })
+            .catch(err => {
+                document.getElementById('loader').style.display = 'none';
+                alert("सर्वर एरर! कृपया दोबारा प्रयास करें।");
+            });
+        }
+    </script>
+</body>
+</html>
