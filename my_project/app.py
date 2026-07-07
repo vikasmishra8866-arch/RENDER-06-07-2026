@@ -151,7 +151,7 @@ async function searchVehicle() {
 def home():
     return render_template_string(HTML_TEMPLATE)
 
-# --- क्यूआर कोड जेनरेशन ---
+# --- [फिक्स] क्यूआर कोड जेनरेशन बिना किसी आर्गुमेंट एरर के ---
 async def _async_qr_flow():
     if not client.is_connected():
         await client.connect()
@@ -164,10 +164,12 @@ async def _async_qr_flow():
     qr = qrcode.QRCode(version=1, box_size=10, border=4)
     qr.add_data(qr_login.url)
     qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
     
+    # [फिक्स]: यहाँ हमने मेक इमेज को बिना किसी फॉर्मेट आर्गुमेंट के सीधे स्ट्रीम में सेव किया है
+    img = qr.make_image(fill_color="black", back_color="white")
     buffered = BytesIO()
-    img.save(buffered, format="PNG")
+    img.save(buffered) # यहाँ से फॉर्मेट हटा दिया गया है ताकि PyPNG एरर न दे
+    
     return base64.b64encode(buffered.getvalue()).decode('utf-8')
 
 @app.route('/generate-qr', methods=['POST'])
@@ -201,7 +203,7 @@ def check_qr_status():
     except Exception:
         return jsonify({"status": "waiting"})
 
-# --- [फिक्स] एरर-फ्री ऑटो क्लिकर और बोट फ्लो ---
+# --- ऑटो क्लिकर और बोट फ्लो ---
 async def _execute_bot_flow(gadi_num):
     if not client.is_connected():
         await client.connect()
@@ -215,7 +217,6 @@ async def _execute_bot_flow(gadi_num):
     
     button_clicked = False
     
-    # [सिंटैक्स फिक्स]: यहाँ से पुराना गलत लूप हटाकर एकदम क्लीन तरीका लगाया है
     messages = await client.get_messages(bot_entity, limit=1)
     if messages:
         message = messages[0]
