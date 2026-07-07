@@ -4,13 +4,15 @@ import threading
 import base64
 from flask import Flask, request, jsonify, render_template_string
 
-# --- परफेक्ट इवेंट लूप और थ्रेडिंग फिक्स ---
+# --- [परफेक्ट फिक्स] मेन थ्रेड और बैकग्राउंड थ्रेड दोनों के लिए इवेंट लूप सेट करना ---
 loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop) # यह लाइन मेन थ्रेड का एरर खत्म कर देगी
 
 def start_loop(loop_env):
     asyncio.set_event_loop(loop_env)
     loop_env.run_forever()
 
+# बैकग्राउंड में लूप चालू रखना
 threading.Thread(target=start_loop, args=(loop,), daemon=True).start()
 
 from telethon import TelegramClient
@@ -27,6 +29,7 @@ if not BOT_USERNAME.startswith("@"):
 
 SESSION_PATH = "telegram_session"
 
+# अब क्लाइंट बिना किसी एरर के इनिशियलाइज हो जाएगा
 client = TelegramClient(SESSION_PATH, API_ID, API_HASH, loop=loop)
 qr_state = {"token": None}
 
@@ -219,7 +222,6 @@ def check_qr_status():
     except Exception:
         return jsonify({"status": "waiting"})
 
-# --- [बड़ा अपडेट]: बोट के नए बटन 'Vehicle Details + Contact' को हैंडल करने का परफेक्ट फ्लो ---
 async def _execute_bot_flow(gadi_num):
     if not client.is_connected():
         await client.connect()
@@ -229,38 +231,30 @@ async def _execute_bot_flow(gadi_num):
     
     bot_entity = await client.get_input_entity(BOT_USERNAME)
     
-    # 1. सबसे पहले बोट को फ्रेश /start भेजेंगे
     await client.send_message(bot_entity, "/start")
-    await asyncio.sleep(3) # बोट के रिस्पॉन्स का वेट करेंगे
+    await asyncio.sleep(3)
     
     button_text_to_send = None
-    
-    # 2. बोट के मैसेज में आए इनलाइन बटन्स चेक करेंगे
     messages = await client.get_messages(bot_entity, limit=1)
     if messages:
         message = messages[0]
         if message.reply_markup and hasattr(message.reply_markup, 'rows'):
             for row in message.reply_markup.rows:
                 for button in row.buttons:
-                    # 'vehicle' शब्द को ढूंढेंगे (ताकि 'Vehicle Details + Contact' मैच हो जाए)
                     if "vehicle" in button.text.lower():
                         button_text_to_send = button.text
                         break
                 if button_text_to_send: break
 
-    # अगर इनलाइन बटन रिप्लाई नहीं कर रहा, तो सीधे टेक्स्ट मैसेज के रूप में भेजेंगे
     if not button_text_to_send:
         button_text_to_send = "🚘 Vehicle Details + Contact"
 
-    # 3. सही बटन टेक्स्ट बोट को भेजें
     await client.send_message(bot_entity, button_text_to_send)
-    await asyncio.sleep(3) # बोट को प्रोसेस करने का टाइम दें
+    await asyncio.sleep(3)
     
-    # 4. अब गाड़ी नंबर भेजें
     await client.send_message(bot_entity, gadi_num)
-    await asyncio.sleep(12) # बोट रिस्पॉन्स के लिए 12 सेकंड होल्ड करें
+    await asyncio.sleep(12)
     
-    # 5. बोट का फाइनल रिस्पॉन्स निकालें
     final_messages = await client.get_messages(bot_entity, limit=1)
     if final_messages:
         return {"status": "success", "reply": final_messages[0].text}
