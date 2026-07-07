@@ -10,7 +10,8 @@ except RuntimeError:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
-from telethon import TelegramClient, events
+from telethon import TelegramClient
+from telethon.tl.functions.contacts import ResolveUsernameRequest
 
 app = Flask(__name__)
 
@@ -18,6 +19,9 @@ app = Flask(__name__)
 API_ID = int(os.getenv("TG_API_ID", "30587359"))
 API_HASH = os.getenv("TG_API_HASH", "841b57b9782c258672af34c5f7146f56")
 BOT_USERNAME = os.getenv("TARGET_BOT_USERNAME", "@rtovehicleinfoobot")
+
+# यूजरनेम से '@' हटाना अगर कोड में आ जाए
+clean_username = BOT_USERNAME.replace("@", "").strip()
 
 def start_loop(loop_env):
     asyncio.set_event_loop(loop_env)
@@ -30,8 +34,8 @@ client = TelegramClient(None, API_ID, API_HASH, loop=loop)
 def home():
     return """
     <div style="text-align: center; margin-top: 50px; font-family: Arial, sans-serif; max-width: 500px; margin-left: auto; margin-right: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px; box-shadow: 0px 4px 6px rgba(0,0,0,0.1);">
-        <h2 style="color: #2c3e50;">🚗 Parivahan Service Auto-Clicker Live</h2>
-        <p style="color: #7f8c8d;">यह कोड 'Vehicle Details + Contact' बटन दबाकर डिटेल्स निकालेगा।</p>
+        <h2 style="color: #2c3e50;">🚗 Parivahan Service Auto-Clicker v2</h2>
+        <p style="color: #7f8c8d;">यह कोड बोट आईडी को फोर्स-रजिस्टर करके डिटेल्स निकालेगा।</p>
         
         <div style="margin-top: 30px;">
             <input type="text" id="v_number" placeholder="GJ05BY2328" style="width: 80%; padding: 10px; font-size: 16px; border: 2px solid #3498db; border-radius: 5px; text-transform: uppercase;">
@@ -40,7 +44,7 @@ def home():
         </div>
         
         <div id="result_box" style="margin-top: 30px; padding: 15px; border-radius: 5px; font-weight: bold; background-color: #f8f9fa; min-height: 40px; word-wrap: break-word; text-align: left;">
-            स्टेटस: बोट पर बटन क्लिक टेस्ट करने के लिए तैयार है।
+            स्टेटस: टेस्ट करने के लिए तैयार है।
         </div>
     </div>
 
@@ -54,7 +58,7 @@ def home():
         
         let box = document.getElementById('result_box');
         box.style.color = '#d35400';
-        box.innerHTML = '⏳ बोट को जगाया जा रहा है और "Vehicle Details" बटन पर क्लिक किया जा रहा है...';
+        box.innerHTML = '⏳ टेलीग्राम सर्वर से बोट को रजिस्टर किया जा रहा है... कृपया 10-15 सेकंड रुकें...';
         
         try {
             let response = await fetch('/test-bot', {
@@ -73,7 +77,7 @@ def home():
             }
         } catch(err) {
             box.style.color = '#c0392b';
-            box.innerHTML = '❌ सर्वर से कनेक्शन टूट गया!';
+            box.innerHTML = '❌ सर्ver से कनेक्शन टूट गया!';
         }
     }
     </script>
@@ -84,42 +88,48 @@ async def send_and_recv(gadi_num):
         if not client.is_connected():
             await client.connect()
         
-        # १. बोट को /start भेजकर ताज़ा मेनू और बटन लोड करें
-        await client.send_message(BOT_USERNAME, "/start")
-        await asyncio.sleep(3) # बोट का रिस्पॉन्स और कीबोर्ड बटन आने का इंतज़ार
+        # [फिक्स] टेलीग्राम एपीआई को सीधे बोलकर यूजरनेम को कैश (Cache) में रजिस्टर करवाना
+        bot_entity = None
+        try:
+            bot_entity = await client(ResolveUsernameRequest(clean_username))
+            # बोट की इनपुट एंटिटी को पूरी तरह से सिस्टम में सेव करना
+            bot_peer = bot_entity.peer
+        except Exception as resolve_err:
+            return {"status": "error", "message": f"टेलीग्राम बोट यूजरनेम ढूंढ नहीं पाया: {str(resolve_err)}"}
+
+        # १. बोट को सीधे /start भेजना रजिस्टर्ड एंटिटी का उपयोग करके
+        await client.send_message(bot_entity, "/start")
+        await asyncio.sleep(3)
         
         button_clicked = False
         
-        # २. बोट चैट के आख़िरी मैसेज में कीबोर्ड या इनलाइन बटन ढूंढना
-        async for message in client.iter_messages(BOT_USERNAME, limit=1):
-            # बोट के नीचे दिखने वाले रिप्लाई कीबोर्ड बटन्स को चेक करें
+        # २. कीबोर्ड बटन ढूंढकर उसपर एक्शन लेना
+        async for message in client.iter_messages(bot_entity, limit=1):
             if message.reply_markup and hasattr(message.reply_markup, 'rows'):
                 for row in message.reply_markup.rows:
                     for button in row.buttons:
-                        # बटन के टेक्स्ट में 'vehicle' नाम खोजें (जैसे: 🚗 Vehicle Details + Contact)
                         if "vehicle" in button.text.lower():
-                            # सीधे उसी टेक्स्ट मैसेज को चैट में भेजकर बटन क्लिक को सिमुलेट करें
-                            await client.send_message(BOT_USERNAME, button.text)
+                            await client.send_message(bot_entity, button.text)
                             button_clicked = True
                             break
                     if button_clicked: break
 
         if not button_clicked:
-            return {"status": "error", "message": "बोट के अंदर 'Vehicle Details' बटन नहीं मिल पाया। कृपया चेक करें कि बोट चालू है या नहीं।"}
+            return {"status": "error", "message": "बोट के अंदर 'Vehicle Details' बटन नहीं मिल पाया।"}
             
-        await asyncio.sleep(3) # "enter vehicle number" वाले मैसेज का इंतज़ार
+        await asyncio.sleep(3) # नंबर मांगने का इंतज़ार
         
-        # ३. अब गाड़ी नंबर भेजें
-        await client.send_message(BOT_USERNAME, gadi_num)
+        # ३. गाड़ी नंबर भेजना
+        await client.send_message(bot_entity, gadi_num)
         
-        # ४. ₹5 कटने और बोट द्वारा गाड़ी की असली डिटेल्स भेजने के लिए थोड़ा ज़्यादा (12 सेकंड) इंतज़ार करें
+        # ४. डिटेल्स लोड होने का इंतज़ार
         await asyncio.sleep(12)
         
-        # ५. फाइनल रिस्पॉन्स खींचें
-        async for message in client.iter_messages(BOT_USERNAME, limit=1):
+        # ५. फाइनल रिस्पॉन्स खींचना
+        async for message in client.iter_messages(bot_entity, limit=1):
             return {"status": "success", "reply": message.text}
             
-        return {"status": "error", "message": "गाड़ी नंबर भेजने के बाद बोट शांत रहा।"}
+        return {"status": "error", "message": "गाड़ी नंबर भेजने के बाद बोट से कोई रिस्पॉन्स नहीं आया।"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
