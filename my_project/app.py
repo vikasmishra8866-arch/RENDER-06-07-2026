@@ -30,17 +30,17 @@ client = TelegramClient(None, API_ID, API_HASH, loop=loop)
 def home():
     return """
     <div style="text-align: center; margin-top: 50px; font-family: Arial, sans-serif; max-width: 500px; margin-left: auto; margin-right: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px; box-shadow: 0px 4px 6px rgba(0,0,0,0.1);">
-        <h2 style="color: #2c3e50;">🚗 Parivahan Service Button-Bot Tester</h2>
-        <p style="color: #7f8c8d;">यह कोड पहले 'Vehicle Details' बटन दबाएगा, फिर गाड़ी नंबर भेजेगा।</p>
+        <h2 style="color: #2c3e50;">🚗 Parivahan Service Auto-Clicker Live</h2>
+        <p style="color: #7f8c8d;">यह कोड 'Vehicle Details + Contact' बटन दबाकर डिटेल्स निकालेगा।</p>
         
         <div style="margin-top: 30px;">
             <input type="text" id="v_number" placeholder="GJ05BY2328" style="width: 80%; padding: 10px; font-size: 16px; border: 2px solid #3498db; border-radius: 5px; text-transform: uppercase;">
             <br><br>
-            <button onclick="testBot()" style="background-color: #27ae60; color: white; border: none; padding: 10px 20px; font-size: 16px; border-radius: 5px; cursor: pointer; width: 85%;">स्मार्ट बोट टेस्ट करें 🚀</button>
+            <button onclick="testBot()" style="background-color: #27ae60; color: white; border: none; padding: 10px 20px; font-size: 16px; border-radius: 5px; cursor: pointer; width: 85%;">डिटेल्स निकालें 🚀</button>
         </div>
         
         <div id="result_box" style="margin-top: 30px; padding: 15px; border-radius: 5px; font-weight: bold; background-color: #f8f9fa; min-height: 40px; word-wrap: break-word; text-align: left;">
-            स्टेटस: तैयार है।
+            स्टेटस: बोट पर बटन क्लिक टेस्ट करने के लिए तैयार है।
         </div>
     </div>
 
@@ -54,7 +54,7 @@ def home():
         
         let box = document.getElementById('result_box');
         box.style.color = '#d35400';
-        box.innerHTML = '⏳ बटन दबाया जा रहा है और नंबर भेजा जा रहा है... कृपया 10-15 सेकंड रुकें...';
+        box.innerHTML = '⏳ बोट को जगाया जा रहा है और "Vehicle Details" बटन पर क्लिक किया जा रहा है...';
         
         try {
             let response = await fetch('/test-bot', {
@@ -66,7 +66,7 @@ def home():
             
             if(data.status === "success") {
                 box.style.color = '#27ae60';
-                box.innerHTML = '✅ <b>बोट से रिस्पॉन्स आ गया!</b><br><br>' + data.reply.replace(/\\n/g, '<br>');
+                box.innerHTML = '✅ <b>गाड़ी की जानकारी नीचे है:</b><br><br>' + data.reply.replace(/\\n/g, '<br>');
             } else {
                 box.style.color = '#c0392b';
                 box.innerHTML = '❌ <b>एरर:</b> ' + data.message;
@@ -84,33 +84,42 @@ async def send_and_recv(gadi_num):
         if not client.is_connected():
             await client.connect()
         
-        # १. बोट को जगाने के लिए /start भेजें ताकि बटन लोड हों
+        # १. बोट को /start भेजकर ताज़ा मेनू और बटन लोड करें
         await client.send_message(BOT_USERNAME, "/start")
-        await asyncio.sleep(2) # बटन लोड होने का इंतज़ार
+        await asyncio.sleep(3) # बोट का रिस्पॉन्स और कीबोर्ड बटन आने का इंतज़ार
         
-        # २. बोट की चैट से आखिरी मैसेज उठाएं जिसमें बटन आए हैं
+        button_clicked = False
+        
+        # २. बोट चैट के आख़िरी मैसेज में कीबोर्ड या इनलाइन बटन ढूंढना
         async for message in client.iter_messages(BOT_USERNAME, limit=1):
-            if message.buttons:
-                # बटन की लिस्ट में "Vehicle Details" नाम का बटन ढूंढना
-                for row in message.buttons:
-                    for button in row:
-                        if "vehicle details" in button.text.lower():
-                            # मिल गया बटन! अब कोड खुद इसपर 'क्लिक' करेगा
-                            await button.click()
-                            await asyncio.sleep(2) # "enter vehicle number" मैसेज आने का इंतज़ार
+            # बोट के नीचे दिखने वाले रिप्लाई कीबोर्ड बटन्स को चेक करें
+            if message.reply_markup and hasattr(message.reply_markup, 'rows'):
+                for row in message.reply_markup.rows:
+                    for button in row.buttons:
+                        # बटन के टेक्स्ट में 'vehicle' नाम खोजें (जैसे: 🚗 Vehicle Details + Contact)
+                        if "vehicle" in button.text.lower():
+                            # सीधे उसी टेक्स्ट मैसेज को चैट में भेजकर बटन क्लिक को सिमुलेट करें
+                            await client.send_message(BOT_USERNAME, button.text)
+                            button_clicked = True
                             break
+                    if button_clicked: break
+
+        if not button_clicked:
+            return {"status": "error", "message": "बोट के अंदर 'Vehicle Details' बटन नहीं मिल पाया। कृपया चेक करें कि बोट चालू है या नहीं।"}
+            
+        await asyncio.sleep(3) # "enter vehicle number" वाले मैसेज का इंतज़ार
         
-        # ३. अब जब बोट ने नंबर मांग लिया है, गाड़ी नंबर सेंड करें
+        # ३. अब गाड़ी नंबर भेजें
         await client.send_message(BOT_USERNAME, gadi_num)
         
-        # ४. गाड़ी की डिटेल्स आने के लिए १० सेकंड का इंतज़ार
-        await asyncio.sleep(10)
+        # ४. ₹5 कटने और बोट द्वारा गाड़ी की असली डिटेल्स भेजने के लिए थोड़ा ज़्यादा (12 सेकंड) इंतज़ार करें
+        await asyncio.sleep(12)
         
-        # ५. फाइनल रिस्पॉन्स स्क्रीन पर दिखाना
+        # ५. फाइनल रिस्पॉन्स खींचें
         async for message in client.iter_messages(BOT_USERNAME, limit=1):
             return {"status": "success", "reply": message.text}
             
-        return {"status": "error", "message": "गाड़ी नंबर भेजने के बाद बोट से कोई रिस्पॉन्स नहीं आया।"}
+        return {"status": "error", "message": "गाड़ी नंबर भेजने के बाद बोट शांत रहा।"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
