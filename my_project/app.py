@@ -1,6 +1,7 @@
 import os
 import asyncio
 import threading
+import base64
 from flask import Flask, request, jsonify, render_template_string
 
 # --- इवेंट लूप फिक्स ---
@@ -11,7 +12,6 @@ except RuntimeError:
     asyncio.set_event_loop(loop)
 
 from telethon import TelegramClient
-from telethon.errors import SessionPasswordNeededError
 
 app = Flask(__name__)
 
@@ -23,113 +23,103 @@ BOT_USERNAME = os.getenv("TARGET_BOT_USERNAME", "@rtovehicleinfoobot").strip()
 if not BOT_USERNAME.startswith("@"):
     BOT_USERNAME = "@" + BOT_USERNAME
 
-# रेंडर पर सेशन डिलीट न हो, इसलिए लोकल डिस्क पर स्टोर करेंगे
-SESSION_PATH = "/opt/render/project/src/telegram_session" if os.path.exists("/opt/render/project/src") else "telegram_session"
+SESSION_PATH = "telegram_session"
 
 def start_loop(loop_env):
     asyncio.set_event_loop(loop_env)
     loop_env.run_forever()
 
 threading.Thread(target=start_loop, args=(loop,), daemon=True).start()
-
-# क्लाइंट को परमानेंट सेशन फ़ाइल के साथ शुरू करना
 client = TelegramClient(SESSION_PATH, API_ID, API_HASH, loop=loop)
 
-# ग्लोबल डिक्शनरी ताकि लॉगिन प्रोग्रेस ट्रैक हो सके
-login_state = {"phone": None, "phone_code_hash": None}
+# QR कोड की स्थिति को ट्रैक करने के लिए ग्लोबल वेरिएबल
+qr_state = {"qr_link": None, "token": None, "client_instance": client}
 
-# HTML इंटरफ़ेस (लॉगिन + व्हीकल सर्च दोनों एक ही जगह)
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Parivahan Service Automation</title>
+    <title>Parivahan Service QR Automation</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { font-family: Arial, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; text-align: center; }
         .card { max-width: 500px; margin: 40px auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0px 4px 10px rgba(0,0,0,0.1); border: 1px solid #e1e4e8; }
         h2 { color: #2c3e50; margin-bottom: 10px; }
         p { color: #7f8c8d; font-size: 14px; }
-        input[type="text"], input[type="password"] { width: 85%; padding: 12px; margin: 10px 0; border: 2px solid #cbd5e1; border-radius: 6px; font-size: 16px; outline: none; }
-        input:focus { border-color: #3498db; }
+        input[type="text"] { width: 85%; padding: 12px; margin: 10px 0; border: 2px solid #cbd5e1; border-radius: 6px; font-size: 16px; outline: none; text-transform: uppercase; }
         button { background-color: #27ae60; color: white; border: none; padding: 12px 20px; font-size: 16px; border-radius: 6px; cursor: pointer; width: 90%; font-weight: bold; margin-top: 10px; }
         button:hover { background-color: #219653; }
-        .btn-auth { background-color: #2f80ed; }
-        .btn-auth:hover { background-color: #1b60c4; }
+        .btn-qr { background-color: #2f80ed; }
+        .btn-qr:hover { background-color: #1b60c4; }
         .status-box { margin-top: 20px; padding: 12px; border-radius: 6px; font-weight: bold; background-color: #f8f9fa; text-align: left; word-wrap: break-word; font-size: 14px; }
+        #qr_img { width: 220px; height: 220px; margin: 15px auto; border: 4px solid #34495e; padding: 5px; background: white; display: none; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2>🚗 Parivahan Service System</h2>
-    <p>टेलीग्राम सेशन को चालू रखने और ऑटो-क्लिकर बटन दबाने का मास्टर पैनल।</p>
+    <h2>🚗 Parivahan Service Panel</h2>
+    <p>QR कोड स्कैन करके अपने टेलीग्राम को 1 सेकंड में सर्वर से लिंक करें।</p>
     <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
 
-    <div id="auth_section">
-        <h4 style="color: #2f80ed; margin: 5px 0;">🔑 टेलीग्राम ऑथेंटिकेशन</h4>
-        <p>अगर आपकी वेबसाइट पर पहली बार आए हैं, तो नीचे अपना टेलीग्राम नंबर डालकर OTP मंगाएं।</p>
-        <input type="text" id="phone_input" placeholder="+919999999999">
-        <button onclick="sendOtp()" class="btn-auth">1. OTP भेजें 📩</button>
-        
-        <div id="otp_div" style="display:none; margin-top: 15px;">
-            <input type="text" id="otp_input" placeholder="टेलीग्राम ऐप में आया कोड डालें">
-            <button onclick="verifyOtp()" class="btn-auth" style="background-color: #8e44ad;">2. कोड वेरीफाई करें ✅</button>
-        </div>
+    <div id="qr_section">
+        <h4 style="color: #2f80ed; margin: 5px 0;">📲 टेलीग्राम लॉगिन (QR स्कैन करें)</h4>
+        <p>नीचे बटन दबाएं, फिर अपने टेलीग्राम ऐप के Settings -> Devices -> Link Desktop Device में जाकर इसे स्कैन करें।</p>
+        <button onclick="generateQR()" class="btn-qr">1. QR कोड जेनरेट करें 🖼️</button>
+        <br>
+        <img id="qr_img" src="" alt="Telegram QR Code">
     </div>
 
     <hr style="border: 0; border-top: 1px solid #eee; margin: 25px 0;">
 
     <div>
         <h4 style="color: #27ae60; margin: 5px 0;">🔍 व्हीकल नंबर सर्च</h4>
-        <input type="text" id="v_number" placeholder="GJ05MS9717" style="text-transform: uppercase;">
+        <input type="text" id="v_number" placeholder="GJ05MS9717">
         <button onclick="searchVehicle()">ऑटो-क्लिक बोट रन करें 🚀</button>
     </div>
 
-    <div id="status_box" class="status-box">स्थिति: तैयार है। टेलीग्राम लॉगिन चेक करें या सीधे गाड़ी नंबर टेस्ट करें।</div>
+    <div id="status_box" class="status-box">स्थिति: तैयार है। पहले QR कोड स्कैन करें या सीधे गाड़ी नंबर चलाएं।</div>
 </div>
 
 <script>
 let box = document.getElementById('status_box');
+let qrImg = document.getElementById('qr_img');
+let checkInterval = null;
 
-async def_post(url, body) {
-    let res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-    });
-    return await res.json();
-}
-
-async function sendOtp() {
-    let phone = document.getElementById('phone_input').value.trim();
-    if(!phone) return alert('कृपया नंबर डालें!');
-    box.innerHTML = '⏳ टेलीग्राम सर्वर से कोड (OTP) का अनुरोध किया जा रहा है...';
+async function generateQR() {
+    box.style.color = '#2f80ed';
+    box.innerHTML = '⏳ टेलीग्राम सर्वर से QR कोड लाया जा रहा है... कृपया रुकें...';
     
-    let data = await def_post('/send-otp', { phone: phone });
-    if(data.status === 'otp_sent') {
-        box.style.color = '#2f80ed';
-        box.innerHTML = '📩 कोड आपके टेलीग्राम ऐप पर भेज दिया गया है! कृपया उसे नीचे दर्ज करें।';
-        document.getElementById('otp_div').style.display = 'block';
+    let res = await fetch('/generate-qr', { method: 'POST' });
+    let data = await res.json();
+    
+    if(data.status === 'qr_ready') {
+        qrImg.src = "data:image/png;base64," + data.image;
+        qrImg.style.display = 'block';
+        box.innerHTML = '✅ QR कोड तैयार है! अपने फोन के टेलीग्राम से इसे तुरंत स्कैन करें।';
+        
+        // हर 3 सेकंड में चेक करना कि यूज़र ने स्कैन किया या नहीं
+        if(checkInterval) clearInterval(checkInterval);
+        checkInterval = setInterval(checkLoginStatus, 3000);
     } else {
         box.style.color = '#c0392b';
         box.innerHTML = '❌ एरर: ' + data.message;
     }
 }
 
-async function verifyOtp() {
-    let code = document.getElementById('otp_input').value.trim();
-    if(!code) return alert('कृपया कोड डालें!');
-    box.innerHTML = '⏳ कोड वेरीफाई किया जा रहा है और सुरक्षित सत्र फ़ाइल बनाई जा रही है...';
-    
-    let data = await def_post('/verify-otp', { code: code });
-    if(data.status === 'success') {
+async function checkLoginStatus() {
+    let res = await fetch('/check-qr-status');
+    let data = await res.json();
+    if(data.status === 'logged_in') {
+        clearInterval(checkInterval);
+        qrImg.style.display = 'none';
         box.style.color = '#27ae60';
-        box.innerHTML = '✅ टेलीग्राम सफलतापूर्वक लिंक हो गया है! अब आप हमेशा के लिए गाड़ी नंबर सर्च कर सकते हैं।';
-        document.getElementById('auth_section').style.display = 'none';
-    } else {
+        box.innerHTML = '🎉 बधाई हो विकास भाई! टेलीग्राम सफलतापूर्वक लिंक हो गया है। अब आप गाड़ी सर्च कर सकते हैं!';
+    } else if (data.status === 'expired') {
+        clearInterval(checkInterval);
+        qrImg.style.display = 'none';
         box.style.color = '#c0392b';
-        box.innerHTML = '❌ एरर: ' + data.message;
+        box.innerHTML = '❌ QR कोड की समय सीमा समाप्त हो गई। कृपया दोबारा बटन दबाएं।';
     }
 }
 
@@ -137,9 +127,14 @@ async function searchVehicle() {
     let num = document.getElementById('v_number').value.trim();
     if(!num) return alert('कृपया गाड़ी नंबर डालें!');
     box.style.color = '#d35400';
-    box.innerHTML = '⏳ बोट के बटन पर ऑटो-क्लिक किया जा रहा है और डिटेल्स निकाली जा रही हैं... (15 सेकंड रुकें)';
+    box.innerHTML = '⏳ बोट पर ऑटो-क्लिक किया जा रहा है... (12-15 सेकंड रुकें)...';
     
-    let data = await def_post('/search', { vehicle_number: num });
+    let res = await fetch('/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vehicle_number: num })
+    });
+    let data = await res.json();
     if(data.status === 'success') {
         box.style.color = '#27ae60';
         box.innerHTML = '✅ <b>बोट रिस्पॉन्स:</b><br><br>' + data.reply.replace(/\\n/g, '<br>');
@@ -157,36 +152,56 @@ async function searchVehicle() {
 def home():
     return render_template_string(HTML_TEMPLATE)
 
-# --- टेलीग्राम ऑथेंटिकेशन एंडपॉइंट्स ---
-async def _send_otp_tg(phone):
+# --- QR कोड जनरेशन एंडपॉइंट ---
+async def _async_qr_flow():
     if not client.is_connected():
         await client.connect()
-    sent = await client.send_code_request(phone)
-    login_state["phone"] = phone
-    login_state["phone_code_hash"] = sent.phone_code_hash
+    
+    # टेलीथॉन का इन-बिल्ट QR लॉगिन मैनेजर
+    qr_login = await client.qr_login()
+    qr_state["token"] = qr_login
+    
+    # QR कोड को इमेज (Bytes) में बदलना ताकि स्क्रीन पर दिखा सकें
+    import qrcode
+    from io import BytesIO
+    qr = qrcode.QRCode(version=1, box_size=10, border=4)
+    qr.add_data(qr_login.url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    buffered = BytesIO()
+    img.save(buffered, format="PNG")
+    img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
+    return img_str
 
-@app.route('/send-otp', methods=['POST'])
-def send_otp_route():
+@app.route('/generate-qr', methods=['POST'])
+def generate_qr_route():
     try:
-        phone = request.json.get('phone', '').strip()
-        future = asyncio.run_coroutine_threadsafe(_send_otp_tg(phone), loop)
-        future.result()
-        return jsonify({"status": "otp_sent"})
+        future = asyncio.run_coroutine_threadsafe(_async_qr_flow(), loop)
+        img_base64 = future.result()
+        return jsonify({"status": "qr_ready", "image": img_base64})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
 
-async def _verify_otp_tg(code):
-    await client.sign_in(login_state["phone"], code, phone_code_hash=login_state["phone_code_hash"])
-
-@app.route('/verify-otp', methods=['POST'])
-def verify_otp_route():
+# --- स्टेटस चेक एंडपॉइंट ---
+async def _async_check_qr():
+    token = qr_state.get("token")
+    if not token:
+        return "expired"
     try:
-        code = request.json.get('code', '').strip()
-        future = asyncio.run_coroutine_threadsafe(_verify_otp_tg(code), loop)
-        future.result()
-        return jsonify({"status": "success"})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)})
+        # यह चेक करता है कि यूजर ने स्कैन पूरा किया या नहीं
+        await token.wait(timeout=2)
+        return "logged_in"
+    except asyncio.TimeoutError:
+        return "waiting"
+    except Exception:
+        return "expired"
+
+@app.route('/check-qr-status')
+def check_qr_status():
+    future = asyncio.run_coroutine_threadsafe(_async_check_qr(), loop)
+    res = future.result()
+    return jsonify({"status": res})
 
 # --- ऑटो-क्लिकर और डेटा सर्च लॉजिक ---
 async def _execute_bot_flow(gadi_num):
@@ -194,44 +209,35 @@ async def _execute_bot_flow(gadi_num):
         await client.connect()
     
     if not await client.is_user_authorized():
-        return {"status": "error", "message": "आपका टेलीग्राम अकाउंट सर्वर से लिंक नहीं है। कृपया पहले ऊपर लॉगिन करें।"}
+        return {"status": "error", "message": "टेलीग्राम लिंक नहीं है। कृपया पहले ऊपर QR कोड स्कैन करें।"}
     
-    # 1. बोट एंटिटी खोजना (लॉगिन होने के बाद यह तुरंत मिल जाएगी)
     bot_entity = await client.get_input_entity(BOT_USERNAME)
-    
-    # 2. बोट को /start भेजकर कीबोर्ड लोड करना
     await client.send_message(bot_entity, "/start")
     await asyncio.sleep(3)
     
     button_clicked = False
-    
-    # 3. बोट चैट के अंदर 'Vehicle Details' बटन खोजना और उसपर ऑटो-क्लिक सिमुलेट करना
-    async for message in client.iter_messages(bot_entity, limit=1):
-        if message.reply_markup and hasattr(message.reply_markup, 'rows'):
-            for row in message.reply_markup.rows:
-                for button in row.buttons:
-                    if "vehicle" in button.text.lower():
-                        await client.send_message(bot_entity, button.text)
-                        button_clicked = True
-                        break
-                if button_clicked: break
+    async range_msg in [client.iter_messages(bot_entity, limit=1)]:
+        async for message in range_msg:
+            if message.reply_markup and hasattr(message.reply_markup, 'rows'):
+                for row in message.reply_markup.rows:
+                    for button in row.buttons:
+                        if "vehicle" in button.text.lower():
+                            await client.send_message(bot_entity, button.text)
+                            button_clicked = True
+                            break
+                    if button_clicked: break
 
     if not button_clicked:
-        return {"status": "error", "message": "बोट का 'Vehicle Details' कीबोर्ड बटन स्क्रीन पर नहीं मिला।"}
+        return {"status": "error", "message": "बोट का 'Vehicle Details' बटन नहीं मिला।"}
         
-    await asyncio.sleep(3) # "Enter vehicle number" का इंतज़ार
-    
-    # 4. गाड़ी नंबर भेजना
+    await asyncio.sleep(3)
     await client.send_message(bot_entity, gadi_num)
-    
-    # 5. ₹5 कटने और डेटा रेंडर होने का इंतज़ार (12 सेकंड)
     await asyncio.sleep(12)
     
-    # 6. बोट का आखिरी जवाब खींचना
     async for message in client.iter_messages(bot_entity, limit=1):
         return {"status": "success", "reply": message.text}
         
-    return {"status": "error", "message": "नंबर भेजने के बाद बोट से कोई रिस्पॉन्स नहीं मिला।"}
+    return {"status": "error", "message": "बोट से कोई रिस्पॉन्स नहीं आया।"}
 
 @app.route('/search', methods=['POST'])
 def search_route():
