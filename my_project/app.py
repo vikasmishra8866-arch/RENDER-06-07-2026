@@ -2,6 +2,15 @@ import os
 import asyncio
 import threading
 from flask import Flask, request, jsonify
+
+# --- नए पाइथन वर्जन (3.14+) के लिए इवेंट लूप फिक्स ---
+try:
+    asyncio.get_running_loop()
+except RuntimeError:
+    # अगर कोई लूप नहीं है, तो नया सेट करें
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
 from telethon import TelegramClient
 
 app = Flask(__name__)
@@ -11,20 +20,18 @@ API_ID = int(os.getenv("TG_API_ID", "30587359"))
 API_HASH = os.getenv("TG_API_HASH", "841b57b9782c258672af34c5f7146f56")
 BOT_USERNAME = os.getenv("TARGET_BOT_USERNAME", "@rtovehicleinfoobot")
 
-# Async Loop को बैकग्राउंड में सेट करना (टेलीग्राम के लिए जरूरी है)
-loop = asyncio.new_event_loop()
+# बैकग्राउंड में लूप चलाने का फुलप्रूफ तरीका
 def start_loop(loop_env):
     asyncio.set_event_loop(loop_env)
     loop_env.run_forever()
 
 threading.Thread(target=start_loop, args=(loop,), daemon=True).start()
 
-# बिना किसी फाइल झंझट के टेलीग्राम क्लाइंट (Memory Session)
+# लूप को सीधे क्लाइंट के अंदर पास करना ताकि मेन थ्रेड एरर न दे
 client = TelegramClient(None, API_ID, API_HASH, loop=loop)
 
 @app.route('/')
 def home():
-    # सीधे स्क्रीन पर गाड़ी नंबर डालने का सुंदर इंटरफ़ेस
     return """
     <div style="text-align: center; margin-top: 50px; font-family: Arial, sans-serif; max-width: 500px; margin-left: auto; margin-right: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px; box-shadow: 0px 4px 6px rgba(0,0,0,0.1);">
         <h2 style="color: #2c3e50;">🚗 Parivahan Service Bot Tester</h2>
@@ -79,15 +86,12 @@ def home():
 async def send_and_recv(gadi_num):
     try:
         if not client.is_connected():
+            # सीधे लूप का इस्तेमाल करके कनेक्ट करना
             await client.connect()
         
-        # बोट को गाड़ी नंबर भेजना
         await client.send_message(BOT_USERNAME, gadi_num)
+        await asyncio.sleep(10)
         
-        # बोट के जवाब का 12 सेकंड तक इंतज़ार करना
-        await asyncio.sleep(12)
-        
-        # बोट चैट से आखिरी मैसेज उठाना
         async for message in client.iter_messages(BOT_USERNAME, limit=1):
             return {"status": "success", "reply": message.text}
             
@@ -98,7 +102,6 @@ async def send_and_recv(gadi_num):
 @app.route('/test-bot', methods=['POST'])
 def test_bot_route():
     gadi_number = request.json.get('vehicle_number', '').strip().upper()
-    # बैकग्राउंड थ्रेड में टेलीग्राम फंक्शन चलाना ताकि फ्लैस्क क्रैश न हो
     future = asyncio.run_coroutine_threadsafe(send_and_recv(gadi_number), loop)
     return jsonify(future.result())
 
