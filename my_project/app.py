@@ -4,7 +4,7 @@ import threading
 import base64
 from flask import Flask, request, jsonify, render_template_string
 
-# --- इवेंट लूप फिक्स ---
+# --- परफेक्ट इवेंट लूप हैंडलिंग ---
 try:
     asyncio.get_running_loop()
 except RuntimeError:
@@ -32,14 +32,14 @@ def start_loop(loop_env):
 threading.Thread(target=start_loop, args=(loop,), daemon=True).start()
 client = TelegramClient(SESSION_PATH, API_ID, API_HASH, loop=loop)
 
-# QR कोड की स्थिति को ट्रैक करने के लिए ग्लोबल वेरिएबल
-qr_state = {"qr_link": None, "token": None, "client_instance": client}
+# ग्लोबल स्टेट
+qr_state = {"token": None}
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Parivahan Service QR Automation</title>
+    <title>Parivahan Service Panel</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { font-family: Arial, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; text-align: center; }
@@ -59,12 +59,12 @@ HTML_TEMPLATE = """
 
 <div class="card">
     <h2>🚗 Parivahan Service Panel</h2>
-    <p>QR कोड स्कैन करके अपने टेलीग्राम को 1 सेकंड में सर्वर से लिंक करें।</p>
+    <p>QR कोड स्कैन करके अपने टेलीग्राम को सर्वर से लिंक करें।</p>
     <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
 
     <div id="qr_section">
-        <h4 style="color: #2f80ed; margin: 5px 0;">📲 टेलीग्राम लॉगिन (QR स्कैन करें)</h4>
-        <p>नीचे बटन दबाएं, फिर अपने टेलीग्राम ऐप के Settings -> Devices -> Link Desktop Device में जाकर इसे स्कैन करें।</p>
+        <h4 style="color: #2f80ed; margin: 5px 0;">📲 टेलीग्राम लॉगिन (QR स्कैन)</h4>
+        <p>नीचे बटन दबाएं, फिर टेलीग्राम ऐप के Settings -> Devices -> Link Desktop Device में जाकर स्कैन करें।</p>
         <button onclick="generateQR()" class="btn-qr">1. QR कोड जेनरेट करें 🖼️</button>
         <br>
         <img id="qr_img" src="" alt="Telegram QR Code">
@@ -98,7 +98,6 @@ async function generateQR() {
         qrImg.style.display = 'block';
         box.innerHTML = '✅ QR कोड तैयार है! अपने फोन के टेलीग्राम से इसे तुरंत स्कैन करें।';
         
-        // हर 3 सेकंड में चेक करना कि यूज़र ने स्कैन किया या नहीं
         if(checkInterval) clearInterval(checkInterval);
         checkInterval = setInterval(checkLoginStatus, 3000);
     } else {
@@ -114,7 +113,7 @@ async function checkLoginStatus() {
         clearInterval(checkInterval);
         qrImg.style.display = 'none';
         box.style.color = '#27ae60';
-        box.innerHTML = '🎉 बधाई हो विकास भाई! टेलीग्राम सफलतापूर्वक लिंक हो गया है। अब आप गाड़ी सर्च कर सकते हैं!';
+        box.innerHTML = '🎉 टेलीग्राम सफलतापूर्वक लिंक हो गया है! अब आप गाड़ी सर्च कर सकते हैं।';
     } else if (data.status === 'expired') {
         clearInterval(checkInterval);
         qrImg.style.display = 'none';
@@ -152,16 +151,14 @@ async function searchVehicle() {
 def home():
     return render_template_string(HTML_TEMPLATE)
 
-# --- QR कोड जनरेशन एंडपॉइंट ---
+# --- क्यूआर कोड जेनरेशन ---
 async def _async_qr_flow():
     if not client.is_connected():
         await client.connect()
     
-    # टेलीथॉन का इन-बिल्ट QR लॉगिन मैनेजर
     qr_login = await client.qr_login()
     qr_state["token"] = qr_login
     
-    # QR कोड को इमेज (Bytes) में बदलना ताकि स्क्रीन पर दिखा सकें
     import qrcode
     from io import BytesIO
     qr = qrcode.QRCode(version=1, box_size=10, border=4)
@@ -171,8 +168,7 @@ async def _async_qr_flow():
     
     buffered = BytesIO()
     img.save(buffered, format="PNG")
-    img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
-    return img_str
+    return base64.b64encode(buffered.getvalue()).decode('utf-8')
 
 @app.route('/generate-qr', methods=['POST'])
 def generate_qr_route():
@@ -183,14 +179,13 @@ def generate_qr_route():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
 
-# --- स्टेटस चेक एंडपॉइंट ---
+# --- क्यूआर लॉगिन स्टेटस चेक ---
 async def _async_check_qr():
     token = qr_state.get("token")
     if not token:
         return "expired"
     try:
-        # यह चेक करता है कि यूजर ने स्कैन पूरा किया या नहीं
-        await token.wait(timeout=2)
+        await token.wait(timeout=1)
         return "logged_in"
     except asyncio.TimeoutError:
         return "waiting"
@@ -199,11 +194,14 @@ async def _async_check_qr():
 
 @app.route('/check-qr-status')
 def check_qr_status():
-    future = asyncio.run_coroutine_threadsafe(_async_check_qr(), loop)
-    res = future.result()
-    return jsonify({"status": res})
+    try:
+        future = asyncio.run_coroutine_threadsafe(_async_check_qr(), loop)
+        res = future.result()
+        return jsonify({"status": res})
+    except Exception:
+        return jsonify({"status": "waiting"})
 
-# --- ऑटो-क्लिकर और डेटा सर्च लॉजिक ---
+# --- [फिक्स] एरर-फ्री ऑटो क्लिकर और बोट फ्लो ---
 async def _execute_bot_flow(gadi_num):
     if not client.is_connected():
         await client.connect()
@@ -216,16 +214,19 @@ async def _execute_bot_flow(gadi_num):
     await asyncio.sleep(3)
     
     button_clicked = False
-    async range_msg in [client.iter_messages(bot_entity, limit=1)]:
-        async for message in range_msg:
-            if message.reply_markup and hasattr(message.reply_markup, 'rows'):
-                for row in message.reply_markup.rows:
-                    for button in row.buttons:
-                        if "vehicle" in button.text.lower():
-                            await client.send_message(bot_entity, button.text)
-                            button_clicked = True
-                            break
-                    if button_clicked: break
+    
+    # [सिंटैक्स फिक्स]: यहाँ से पुराना गलत लूप हटाकर एकदम क्लीन तरीका लगाया है
+    messages = await client.get_messages(bot_entity, limit=1)
+    if messages:
+        message = messages[0]
+        if message.reply_markup and hasattr(message.reply_markup, 'rows'):
+            for row in message.reply_markup.rows:
+                for button in row.buttons:
+                    if "vehicle" in button.text.lower():
+                        await client.send_message(bot_entity, button.text)
+                        button_clicked = True
+                        break
+                if button_clicked: break
 
     if not button_clicked:
         return {"status": "error", "message": "बोट का 'Vehicle Details' बटन नहीं मिला।"}
@@ -234,8 +235,9 @@ async def _execute_bot_flow(gadi_num):
     await client.send_message(bot_entity, gadi_num)
     await asyncio.sleep(12)
     
-    async for message in client.iter_messages(bot_entity, limit=1):
-        return {"status": "success", "reply": message.text}
+    final_messages = await client.get_messages(bot_entity, limit=1)
+    if final_messages:
+        return {"status": "success", "reply": final_messages[0].text}
         
     return {"status": "error", "message": "बोट से कोई रिस्पॉन्स नहीं आया।"}
 
