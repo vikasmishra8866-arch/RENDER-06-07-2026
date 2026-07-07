@@ -4,22 +4,21 @@ import threading
 import base64
 from flask import Flask, request, jsonify, render_template_string
 
-# --- [परफेक्ट फिक्स] मेन थ्रेड और बैकग्राउंड थ्रेड दोनों के लिए इवेंट लूप सेट करना ---
+# --- इवेंट लूप सेटअप ---
 loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop) # यह लाइन मेन थ्रेड का एरर खत्म कर देगी
+asyncio.set_event_loop(loop)
 
 def start_loop(loop_env):
     asyncio.set_event_loop(loop_env)
     loop_env.run_forever()
 
-# बैकग्राउंड में लूप चालू रखना
 threading.Thread(target=start_loop, args=(loop,), daemon=True).start()
 
 from telethon import TelegramClient
 
 app = Flask(__name__)
 
-# Render Environment Variables
+# Environment Variables
 API_ID = int(os.getenv("TG_API_ID", "30587359"))
 API_HASH = os.getenv("TG_API_HASH", "841b57b9782c258672af34c5f7146f56")
 BOT_USERNAME = os.getenv("TARGET_BOT_USERNAME", "@rtovehicleinfoobot").strip()
@@ -28,8 +27,6 @@ if not BOT_USERNAME.startswith("@"):
     BOT_USERNAME = "@" + BOT_USERNAME
 
 SESSION_PATH = "telegram_session"
-
-# अब क्लाइंट बिना किसी एरर के इनिशियलाइज हो जाएगा
 client = TelegramClient(SESSION_PATH, API_ID, API_HASH, loop=loop)
 qr_state = {"token": None}
 
@@ -62,7 +59,6 @@ HTML_TEMPLATE = """
 
     <div id="qr_section">
         <h4 style="color: #2f80ed; margin: 5px 0;">📲 टेलीग्राम लॉगिन (QR स्कैन)</h4>
-        <p>नीचे बटन दबाएं, फिर टेलीग्राम ऐप के Settings -> Devices -> Link Desktop Device में जाकर स्कैन करें।</p>
         <button onclick="generateQR()" class="btn-qr">1. QR कोड जेनरेट करें 🖼️</button>
         <br>
         <img id="qr_img" src="" alt="Telegram QR Code">
@@ -72,11 +68,11 @@ HTML_TEMPLATE = """
 
     <div>
         <h4 style="color: #27ae60; margin: 5px 0;">🔍 व्हीकल नंबर सर्च</h4>
-        <input type="text" id="v_number" placeholder="GJ05MS9717" value="GJ05MS9717">
+        <input type="text" id="v_number" placeholder="GJ05CT3847" value="GJ05CT3847">
         <button onclick="searchVehicle()">ऑटो-क्लिक बोट रन करें 🚀</button>
     </div>
 
-    <div id="status_box" class="status-box">स्थिति: तैयार है। यदि पहली बार चला रहे हैं तो पहले QR स्कैन करें।</div>
+    <div id="status_box" class="status-box">स्थिति: तैयार है।</div>
 </div>
 
 <script>
@@ -86,33 +82,24 @@ let checkInterval = null;
 
 async function generateQR() {
     box.style.color = '#2f80ed';
-    box.innerHTML = '⏳ टेलीग्राम सर्वर से QR कोड लाया जा रहा है... कृपया रुकें...';
+    box.innerHTML = '⏳ क्यूआर कोड जेनरेट हो रहा है...';
     qrImg.style.display = 'none';
-    
     try {
         let res = await fetch('/generate-qr', { method: 'POST' });
         let data = await res.json();
-        
         if(data.status === 'qr_ready') {
             if(data.message === 'already_logged_in') {
                 box.style.color = '#27ae60';
-                box.innerHTML = '🎉 आप पहले से ही लॉग इन हैं! सीधे गाड़ी नंबर सर्च कर सकते हैं।';
+                box.innerHTML = '🎉 आप पहले से लॉग इन हैं! सीधे सर्च करें।';
                 return;
             }
             qrImg.src = "data:image/png;base64," + data.image;
             qrImg.style.display = 'block';
-            box.innerHTML = '✅ QR कोड तैयार है! अपने फोन के टेलीग्राम से इसे तुरंत स्कैन करें।';
-            
+            box.innerHTML = '✅ QR स्कैन करें।';
             if(checkInterval) clearInterval(checkInterval);
             checkInterval = setInterval(checkLoginStatus, 3000);
-        } else {
-            box.style.color = '#c0392b';
-            box.innerHTML = '❌ एरर: ' + data.message;
         }
-    } catch (e) {
-        box.style.color = '#c0392b';
-        box.innerHTML = '❌ सर्वर से कनेक्ट करने में दिक्कत आ रही है।';
-    }
+    } catch (e) {}
 }
 
 async function checkLoginStatus() {
@@ -123,21 +110,16 @@ async function checkLoginStatus() {
             clearInterval(checkInterval);
             qrImg.style.display = 'none';
             box.style.color = '#27ae60';
-            box.innerHTML = '🎉 टेलीग्राम सफलतापूर्वक लिंक हो गया है! अब आप गाड़ी सर्च कर सकते हैं।';
-        } else if (data.status === 'expired') {
-            clearInterval(checkInterval);
-            qrImg.style.display = 'none';
-            box.style.color = '#c0392b';
-            box.innerHTML = '❌ QR कोड की समय सीमा समाप्त हो गई। कृपया दोबारा बटन दबाएं।';
+            box.innerHTML = '🎉 लिंक हो गया!';
         }
     } catch(e) {}
 }
 
 async function searchVehicle() {
     let num = document.getElementById('v_number').value.trim();
-    if(!num) return alert('कृपया गाड़ी नंबर डालें!');
+    if(!num) return alert('गाड़ी नंबर डालें!');
     box.style.color = '#d35400';
-    box.innerHTML = '⏳ बोट पर ऑटो-क्लिक बटन दबाया जा रहा है और गाड़ी नंबर सेंड हो रहा है... (15 सेकंड रुकें)...';
+    box.innerHTML = '⏳ बोट पर असली इनलाइन बटन क्लिक किया जा रहा है... कृपया 15 सेकंड रुकें...';
     
     try {
         let res = await fetch('/search', {
@@ -148,14 +130,14 @@ async function searchVehicle() {
         let data = await res.json();
         if(data.status === 'success') {
             box.style.color = '#2c3e50';
-            box.innerHTML = '✅ <b>बोट से प्राप्त गाड़ी की डिटेल्स:</b>\\n\\n' + data.reply;
+            box.innerHTML = '✅ <b>डिटेल्स:</b>\\n\\n' + data.reply;
         } else {
             box.style.color = '#c0392b';
-            box.innerHTML = '❌ <b>सर्च एरर:</b> ' + data.message;
+            box.innerHTML = '❌ एरर: ' + data.message;
         }
     } catch (e) {
         box.style.color = '#c0392b';
-        box.innerHTML = '❌ रिक्वेस्ट फेल हो गई। सर्वर लॉग्स चेक करें।';
+        box.innerHTML = '❌ कनेक्शन फेल।';
     }
 }
 </script>
@@ -166,27 +148,6 @@ async function searchVehicle() {
 @app.route('/')
 def home():
     return render_template_string(HTML_TEMPLATE)
-
-async def _async_qr_flow():
-    if not client.is_connected():
-        await client.connect()
-    
-    if await client.is_user_authorized():
-        return {"already_logged_in": True}
-
-    qr_login = await client.qr_login()
-    qr_state["token"] = qr_login
-    
-    import qrcode
-    from io import BytesIO
-    qr = qrcode.QRCode(version=1, box_size=10, border=4)
-    qr.add_data(qr_login.url)
-    qr.make(fit=True)
-    
-    img = qr.make_image(fill_color="black", back_color="white")
-    buffered = BytesIO()
-    img.save(buffered)
-    return base64.b64encode(buffered.getvalue()).decode('utf-8')
 
 @app.route('/generate-qr', methods=['POST'])
 def generate_qr_route():
@@ -199,67 +160,90 @@ def generate_qr_route():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
 
-async def _async_check_qr():
-    token = qr_state.get("token")
-    if not token:
-        if await client.is_user_authorized():
-            return "logged_in"
-        return "expired"
-    try:
-        await token.wait(timeout=1)
-        return "logged_in"
-    except asyncio.TimeoutError:
-        return "waiting"
-    except Exception:
-        return "expired"
+async def _async_qr_flow():
+    if not client.is_connected(): await client.connect()
+    if await client.is_user_authorized(): return {"already_logged_in": True}
+    qr_login = await client.qr_login()
+    qr_state["token"] = qr_login
+    import qrcode
+    from io import BytesIO
+    qr = qrcode.QRCode(version=1, box_size=10, border=4)
+    qr.add_data(qr_login.url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffered = BytesIO()
+    img.save(buffered)
+    return base64.b64encode(buffered.getvalue()).decode('utf-8')
 
 @app.route('/check-qr-status')
 def check_qr_status():
     try:
         future = asyncio.run_coroutine_threadsafe(_async_check_qr(), loop)
-        res = future.result()
-        return jsonify({"status": res})
+        return jsonify({"status": future.result()})
     except Exception:
         return jsonify({"status": "waiting"})
 
+async def _async_check_qr():
+    token = qr_state.get("token")
+    if not token:
+        if await client.is_user_authorized(): return "logged_in"
+        return "expired"
+    try:
+        await token.wait(timeout=1)
+        return "logged_in"
+    except Exception:
+        return "waiting"
+
+# --- [एडवांस अपडेट]: असली इनलाइन बटन को डिटेक्ट और क्लिक करने का फ्लो ---
 async def _execute_bot_flow(gadi_num):
-    if not client.is_connected():
+    if not client.is_connected(): 
         await client.connect()
-    
     if not await client.is_user_authorized():
-        return {"status": "error", "message": "टेलीग्राम लिंक नहीं है। पहले ऊपर QR कोड जनरेट करके स्कैन करें।"}
-    
+        return {"status": "error", "message": "पहले लॉगिन करें।"}
+        
     bot_entity = await client.get_input_entity(BOT_USERNAME)
     
+    # स्टेप 1: फ्रेश /start कमांड भेजें
     await client.send_message(bot_entity, "/start")
-    await asyncio.sleep(3)
+    await asyncio.sleep(3.5)
     
-    button_text_to_send = None
+    # स्टेप 2: बोट का आखिरी मैसेज लाकर बटन ढूंढें
     messages = await client.get_messages(bot_entity, limit=1)
+    clicked = False
+    
     if messages:
-        message = messages[0]
-        if message.reply_markup and hasattr(message.reply_markup, 'rows'):
-            for row in message.reply_markup.rows:
-                for button in row.buttons:
-                    if "vehicle" in button.text.lower():
-                        button_text_to_send = button.text
-                        break
-                if button_text_to_send: break
+        msg = messages[0]
+        # चेक करें कि क्या बोट के पास रिप्लाई बटन मेनू है
+        if msg.reply_markup:
+            # तरीके 1: असली इनलाइन या कीबोर्ड बटन पर क्लिक इवेंट ट्रिगर करना
+            try:
+                for row_idx, row in enumerate(msg.reply_markup.rows):
+                    for btn_idx, button in enumerate(row.buttons):
+                        if "vehicle" in button.text.lower() or "details" in button.text.lower():
+                            # सीधे बटन ऑब्जेक्ट पर क्लिक करें (यह असली माउस क्लिक जैसा काम करेगा)
+                            await msg.click(row_idx, btn_idx)
+                            clicked = True
+                            break
+                    if clicked: break
+            except Exception:
+                clicked = False
 
-    if not button_text_to_send:
-        button_text_to_send = "🚘 Vehicle Details + Contact"
-
-    await client.send_message(bot_entity, button_text_to_send)
-    await asyncio.sleep(3)
+    # सेफ्टी नेट: अगर बोट क्लिक ब्लॉक कर रहा है, तो टेक्स्ट के रूप में भेजें
+    if not clicked:
+        await client.send_message(bot_entity, "🚘 Vehicle Details + Contact")
     
+    await asyncio.sleep(4) # बटन रिस्पॉन्स के लिए रुकें
+    
+    # स्टेप 3: गाड़ी नंबर भेजें
     await client.send_message(bot_entity, gadi_num)
-    await asyncio.sleep(12)
+    await asyncio.sleep(13) # डेटा फेच होने के लिए होल्ड करें
     
-    final_messages = await client.get_messages(bot_entity, limit=1)
-    if final_messages:
-        return {"status": "success", "reply": final_messages[0].text}
+    # स्टेप 4: आखिरी रिस्पॉन्स प्राप्त करें
+    final_msgs = await client.get_messages(bot_entity, limit=1)
+    if final_msgs:
+        return {"status": "success", "reply": final_msgs[0].text}
         
-    return {"status": "error", "message": "बोट से गाड़ी का विवरण प्राप्त नहीं हो सका।"}
+    return {"status": "error", "message": "बोट से कोई रिस्पॉन्स नहीं मिला।"}
 
 @app.route('/search', methods=['POST'])
 def search_route():
